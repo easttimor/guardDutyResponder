@@ -1,0 +1,10 @@
+# Compiled files
+*.tfstate
+*.tfstate.backup
+*.zip
+
+# Module directory
+.terraform/
+
+# Sensitive files
+terraform.tfvars
