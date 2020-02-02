@@ -5,12 +5,14 @@ locals {
   event_name_guardduty_responder = "guardduty_responder"
 }
 
+# To Do: dial back policy to least privilege
 data "aws_iam_policy_document" "guardduty_responder" {
   count = var.create_guardduty_responder ? 1 : 0
 
   statement {
     actions = [
-      "EC2:*"
+      "EC2:*",
+      "dynamodb:*"
     ]
     resources = [
       "*"
