@@ -60,5 +60,32 @@ log = logging.getLogger(__name__)
 ###############################################################################
 # HANDLER
 ###############################################################################
-def guardduty_responder(event, context):
-    log.info(event)
+def lambda_handler(event, context):
+    finding = json.loads(event['Message'])
+    
+    detail = finding['detail']
+    log.info(detail)
+    
+    accountId = finding['detail']['accountId']
+    log.info(accountId)
+
+    description = finding['detail']['description']
+    log.info('Description: %s',description)
+    
+    finding_type = finding['detail']['type']
+    log.info('Type: %s', finding_type)
+    
+    resource = finding['detail']['resource']
+    log.info('Resource: %s', resource)
+
+    service = finding['detail']['service']
+    log.info('Service: %s', service)
+    
+    if finding_type == 'Recon:EC2/PortProbeUnprotectedPort':
+        instanceId = finding['detail']['resource']['instanceDetails']['instanceId']
+        vpcId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['vpcId']
+        log.info('Must update NACL for instance %s in VPC %s', instanceId, vpcId)
+        #log.info(finding['detail']['service']['action']['portProbeAction']['portProbeDetails'][0]['remoteIpDetails'])
+        remoteIp = finding['detail']['service']['action']['portProbeAction']['portProbeDetails'][0]['remoteIpDetails']['ipAddressV4']
+        remoteCountry = finding['detail']['service']['action']['portProbeAction']['portProbeDetails'][0]['remoteIpDetails']['country']['countryName']
+        log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
