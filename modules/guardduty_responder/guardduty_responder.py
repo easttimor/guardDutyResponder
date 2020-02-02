@@ -86,6 +86,8 @@ def lambda_handler(event, context):
         vpcId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['vpcId']
         log.info('Must update NACL for instance %s in VPC %s', instanceId, vpcId)
         #log.info(finding['detail']['service']['action']['portProbeAction']['portProbeDetails'][0]['remoteIpDetails'])
-        remoteIp = finding['detail']['service']['action']['portProbeAction']['portProbeDetails'][0]['remoteIpDetails']['ipAddressV4']
-        remoteCountry = finding['detail']['service']['action']['portProbeAction']['portProbeDetails'][0]['remoteIpDetails']['country']['countryName']
-        log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
+        for x in finding['detail']['service']['action']['portProbeAction']['portProbeDetails']:
+            remoteIp = x['remoteIpDetails']['ipAddressV4']
+            remoteCountry = x['remoteIpDetails']['country']['countryName']
+            log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
+        log.info('We can evaluate if count %s is above a configurable threshold', finding['detail']['service']['count'])
