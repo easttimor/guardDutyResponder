@@ -1,3 +1,6 @@
+# Environment config
+.vscode
+
 # Compiled files
 *.tfstate
 *.tfstate.backup

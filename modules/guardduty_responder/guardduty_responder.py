@@ -1,17 +1,17 @@
 ###############################################################################
 # Name:
 #       GuardDuty Responder
-# Input: 
+# Input:
 #       CloudWatch Event, initiated by GuardDuty finding
-# CloudWatch Event Rule: 
+# CloudWatch Event Rule:
 #       
 # Description:
-#       
+#
 # Environment Variables:
 #       LOG_LEVEL (optional): sets the level for function logging
 #           valid input: critical, error, warning, info (default), debug
 # Permissions:
-#       
+#
 ###############################################################################
 
 from botocore.exceptions import ClientError
@@ -65,26 +65,26 @@ def lambda_handler(event, context):
     # Log the raw JSON for the inbound event
     log.info('Raw event: %s', event)
     log.info('Event details: %s', event['detail'])
-    
+
     # set up for DynamoDB
     client_ddb = boto3.client('dynamodb')
-    
+
     # event parsing
     finding = event
 
     detail = finding['detail']
     log.info(detail)
-    
+
     # get finding account and build ARN
     accountId = finding['detail']['accountId']
     log.info('Account Id: %s', accountId)
 
     description = finding['detail']['description']
-    log.info('Description: %s',description)
-    
+    log.info('Description: %s', description)
+
     finding_type = finding['detail']['type']
     log.debug('Type: %s', finding_type)
-    
+
     resource = finding['detail']['resource']
     log.debug('Resource: %s', resource)
 
@@ -95,13 +95,13 @@ def lambda_handler(event, context):
         instanceId = finding['detail']['resource']['instanceDetails']['instanceId']
         vpcId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['vpcId']
         subnetId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['subnetId']
-        
+
         # cross account EC2 session
         role_arn = 'arn:aws:iam::' + accountId + ':role/' + os.environ['CROSS_ACCOUNT_ROLE']
         cross_account_session = aws_session(role_arn, 'guardduty_responder')
         client_ec2 = cross_account_session.client('ec2')
-        naclId = get_nacl(client_ec2, subnetId)    
-        
+        naclId = get_nacl(client_ec2, subnetId)
+
         log.info('Must update NACL %s for instance %s in VPC %s due to %s', naclId, instanceId, vpcId, finding_type)
 
         for x in finding['detail']['service']['action']['portProbeAction']['portProbeDetails']:
@@ -110,8 +110,6 @@ def lambda_handler(event, context):
             log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
             dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry)
         log.info('We can evaluate if count %s is above a configurable threshold', finding['detail']['service']['count'])
-
-
 
 
 def dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry):
@@ -152,7 +150,7 @@ def dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, 
 
 # Use the EC2 instance's subnet to determine the id of the associated Network ACL
 def get_nacl(client_ec2, subnetId):
-    
+
     response = client_ec2.describe_network_acls(
         Filters=[
             {
