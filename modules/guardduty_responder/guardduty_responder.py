@@ -91,7 +91,10 @@ def lambda_handler(event, context):
     service = finding['detail']['service']
     log.debug('Service: %s', service)
 
-    if finding_type == 'Recon:EC2/PortProbeUnprotectedPort':
+    if (finding_type == 'Recon:EC2/PortProbeUnprotectedPort' or
+        finding_type == 'UnauthorizedAccess:EC2/SSHBruteForce' or
+        finding_type == 'UnauthorizedAccess:EC2/RDPBruteForce'):
+
         instanceId = finding['detail']['resource']['instanceDetails']['instanceId']
         vpcId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['vpcId']
         subnetId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['subnetId']
@@ -110,6 +113,8 @@ def lambda_handler(event, context):
             log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
             dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry)
         log.info('We can evaluate if count %s is above a configurable threshold', finding['detail']['service']['count'])
+    else:
+        log.info('There is no action to take for this finding type.')
 
 
 def dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry):
@@ -138,7 +143,7 @@ def dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, 
             log.info('Newly seen block: %s - %s in %s', instanceId, remoteIp, accountId)
             dynamo_table.put_item(Item={'instanceId': instanceId,
                                         'accountId': accountId,
-                                        'vpdId': vpcId,
+                                        'vpcId': vpcId,
                                         'subnetId': subnetId,
                                         'naclId': naclId,
                                         'remoteIp': remoteIp,
