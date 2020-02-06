@@ -10,8 +10,17 @@
 # Environment Variables:
 #       LOG_LEVEL (optional): sets the level for function logging
 #           valid input: critical, error, warning, info (default), debug
-# Permissions:
-#
+#       CROSS_ACCOUNT_ROLE: target account's IAM Role name with cross account permissions
+#       DAY_THRESHOLD: sets the TTL for DynamoDB entries; future logic implementation
+#       DYNAMO_TABLE: table name for tracking IP addresses to block
+#       IP_WHITELIST: (future use) allows for explicit exemption of IP addresses
+# Permissions (currently lazy and needs to be dialed in):
+#       sts:* for assuming roles
+#       ec2:* for EC2 instance and NACL reading, eventually NACL writing
+#       dynamodb:* for reading and writing items in DynamoDB table
+#       logs:PutLogEvents restricted to specific log-group
+#       logs:CreateLogStream restricted to specific log-group
+#       logs:CreateLogGroup unrestricted
 ###############################################################################
 
 from botocore.exceptions import ClientError
@@ -107,11 +116,22 @@ def lambda_handler(event, context):
 
         log.info('Must update NACL %s for instance %s in VPC %s due to %s', naclId, instanceId, vpcId, finding_type)
 
-        for x in finding['detail']['service']['action']['portProbeAction']['portProbeDetails']:
-            remoteIp = x['remoteIpDetails']['ipAddressV4']
-            remoteCountry = x['remoteIpDetails']['country']['countryName']
+        if finding_type == 'Recon:EC2/PortProbeUnprotectedPort':
+
+            for x in finding['detail']['service']['action']['portProbeAction']['portProbeDetails']:
+                remoteIp = x['remoteIpDetails']['ipAddressV4']
+                remoteCountry = x['remoteIpDetails']['country']['countryName']
+                log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
+                dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry)
+
+        if (finding_type == 'UnauthorizedAccess:EC2/SSHBruteForce' or
+            finding_type == 'UnauthorizedAccess:EC2/RDPBruteForce'):
+
+            remoteIp = finding['detail']['service']['action']['networkConnectionAction']['remoteIpDetails']['ipAddressV4']
+            remoteCountry = finding['detail']['service']['action']['networkConnectionAction']['remoteIpDetails']['country']['countryName']
             log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
-            dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry)
+            dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry)            
+            
         log.info('We can evaluate if count %s is above a configurable threshold', finding['detail']['service']['count'])
     else:
         log.info('There is no action to take for this finding type.')

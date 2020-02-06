@@ -24,6 +24,7 @@ locals {
     DYNAMO_TABLE  = local.dynamodb_table_name
     IP_WHITELIST  = ""
     DAY_THRESHOLD = "30"
+    CROSS_ACCOUNT_ROLE = ""
   }
 }
 
