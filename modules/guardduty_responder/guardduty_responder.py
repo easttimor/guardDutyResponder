@@ -4,7 +4,7 @@
 # Input:
 #       CloudWatch Event, initiated by GuardDuty finding
 # CloudWatch Event Rule:
-#       
+#
 # Description:
 #
 # Environment Variables:
@@ -106,6 +106,12 @@ def lambda_handler(event, context):
         finding_type == 'UnauthorizedAccess:EC2/SSHBruteForce' or
         finding_type == 'UnauthorizedAccess:EC2/RDPBruteForce'):
 
+        process_remote_access(finding,accountId,finding_type,client_ddb)
+    else:
+        log.info('There is no action to take for this finding type.')
+
+
+def process_remote_access(finding,accountId,finding_type,client_ddb):
         instanceId = finding['detail']['resource']['instanceDetails']['instanceId']
         vpcId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['vpcId']
         subnetId = finding['detail']['resource']['instanceDetails']['networkInterfaces'][0]['subnetId']
@@ -113,6 +119,8 @@ def lambda_handler(event, context):
         # cross account EC2 session
         role_arn = 'arn:aws:iam::' + accountId + ':role/' + os.environ['CROSS_ACCOUNT_ROLE']
         cross_account_session = aws_session(role_arn, 'guardduty_responder')
+        #new
+        resource_ec2 = cross_account_session.resource('ec2')
         client_ec2 = cross_account_session.client('ec2')
         naclId = get_nacl(client_ec2, subnetId)
 
@@ -124,7 +132,7 @@ def lambda_handler(event, context):
                 remoteIp = x['remoteIpDetails']['ipAddressV4']
                 remoteCountry = x['remoteIpDetails']['country']['countryName']
                 log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
-                dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry)
+                ddb_blocklist_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry, client_ec2, resource_ec2)
 
         if (finding_type == 'UnauthorizedAccess:EC2/SSHBruteForce' or
             finding_type == 'UnauthorizedAccess:EC2/RDPBruteForce'):
@@ -132,38 +140,37 @@ def lambda_handler(event, context):
             remoteIp = finding['detail']['service']['action']['networkConnectionAction']['remoteIpDetails']['ipAddressV4']
             remoteCountry = finding['detail']['service']['action']['networkConnectionAction']['remoteIpDetails']['country']['countryName']
             log.info('Must block the following remote ip %s originating from %s', remoteIp, remoteCountry)
-            dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry)            
-            
+            ddb_blocklist_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry, client_ec2, resource_ec2)
+
         log.info('We can evaluate if count %s is above a configurable threshold', finding['detail']['service']['count'])
-    else:
-        log.info('There is no action to take for this finding type.')
 
-
-def dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry):
+def ddb_blocklist_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, remoteIp, remoteCountry, client_ec2, resource_ec2):
 
     # Establish dynamodb resource
     dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-    dynamo_table = dynamodb.Table(os.environ['DDB_BLOCK_LIST'])
+    ddb_block_list = dynamodb.Table(os.environ['DDB_BLOCK_LIST'])
+    ddb_nacl_rule = dynamodb.Table(os.environ['DDB_NACL'])
 
     # TTL Stuff
     day_threshold = int(os.environ['DAY_THRESHOLD'])
     new_ttl = int(time.mktime((datetime.datetime.now() + datetime.timedelta(days=day_threshold)).timetuple()))
 
-    ddb_key = {'instanceId': instanceId, 'remoteIp': remoteIp}
-    response = dynamo_table.get_item(Key=ddb_key)
+    ddb_block_list_key = {'instanceId': instanceId, 'remoteIp': remoteIp}
+    response = ddb_block_list.get_item(Key=ddb_block_list_key)
 
     if response and 'Item' in response:
         # Instance and remoteIp pair already exist
-        log.info('Already logged instance %s and source %s', instanceId, remoteIp)
-        dynamo_table.update_item(Key=ddb_key,
+        log.info('Updating TTL for already logged instance %s and source %s', instanceId, remoteIp)
+        ddb_block_list.update_item(Key=ddb_block_list_key,
                                  UpdateExpression='SET #ttl = :ttl',
                                  ExpressionAttributeNames={'#ttl': 'TTL'},
                                  ExpressionAttributeValues={':ttl': new_ttl})
+
     else:
         # Instance and remoteIp pair are new
         if remoteIp not in os.environ['IP_WHITELIST']:
             log.info('Newly seen block: %s - %s in %s', instanceId, remoteIp, accountId)
-            dynamo_table.put_item(Item={'instanceId': instanceId,
+            ddb_block_list.put_item(Item={'instanceId': instanceId,
                                         'accountId': accountId,
                                         'vpcId': vpcId,
                                         'subnetId': subnetId,
@@ -171,8 +178,55 @@ def dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, 
                                         'remoteIp': remoteIp,
                                         'remoteCountry': remoteCountry,
                                         'TTL': new_ttl})
+
+            # Check DDB for NACL rule number
+            ddb_nacl_rule_key = {'naclId': naclId}
+            response = ddb_nacl_rule.get_item(Key=ddb_nacl_rule_key)
+            if response and 'Item' in response:
+                # NACL entry exists in DynamoDB
+                ruleNum = response['Item']['ruleNum']
+                log.info('NACL found with rule number %s',ruleNum)
+                # Increment the rule number
+                ruleNum = int(ruleNum) +1
+                ddb_nacl_rule.update_item(
+                    Key=ddb_nacl_rule_key,
+                    AttributeUpdates = {
+                        'ruleNum': {
+                                'Value': ruleNum,
+                                'Action': 'PUT'
+                            }
+                    }
+                )
+                # Write new rule to NACL
+                nacl_create_entry(naclId,ruleNum,remoteIp,client_ec2,resource_ec2)
+            else:
+                # NACL entry does not exist in DynamoDB; create with default rule number
+                ruleNum = int(os.environ['NACL_RULE_NUM'])
+                log.info('Registering new NACL %s with rule number %s',naclId,ruleNum)
+                ddb_nacl_rule.put_item(Item={'naclId': naclId,
+                                            'ruleNum': ruleNum})
+                # Write new rule to NACL
+                nacl_create_entry(naclId,ruleNum,remoteIp,client_ec2,resource_ec2)
         else:
             log.info('Remote %s is included in the whitelist and will not be blocked', remoteIp)
+
+
+# NACL create entry
+def nacl_create_entry(naclId,ruleNum,remoteIp,client_ec2,resource_ec2):
+
+    #ec2 = boto3.resource('ec2')
+    network_acl = resource_ec2.NetworkAcl(naclId)
+    CidrBlock = remoteIp + "/32"
+
+    response = network_acl.create_entry(
+        CidrBlock=CidrBlock,
+        DryRun = False,
+        Egress = False,
+        Protocol = "-1",
+        RuleAction = 'deny',
+        RuleNumber = ruleNum
+    )
+    log.info(response)
 
 
 # Use the EC2 instance's subnet to determine the id of the associated Network ACL
