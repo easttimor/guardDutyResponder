@@ -12,7 +12,8 @@ data "aws_iam_policy_document" "guardduty_responder" {
   statement {
     actions = [
       "EC2:*",
-      "dynamodb:*"
+      "dynamodb:*",
+      "sts:*"
     ]
     resources = [
       "*"

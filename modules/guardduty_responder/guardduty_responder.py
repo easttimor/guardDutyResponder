@@ -12,8 +12,10 @@
 #           valid input: critical, error, warning, info (default), debug
 #       CROSS_ACCOUNT_ROLE: target account's IAM Role name with cross account permissions
 #       DAY_THRESHOLD: sets the TTL for DynamoDB entries; future logic implementation
-#       DYNAMO_TABLE: table name for tracking IP addresses to block
+#       DDB_BLOCK_LIST: table name for tracking IP addresses to block
+#       DDB_NACL: table name for tracking NACL rule numbers
 #       IP_WHITELIST: (future use) allows for explicit exemption of IP addresses
+#       NACL_RULE_NUM: the initial rule number for rules associated with GaurdDuty Responder
 # Permissions (currently lazy and needs to be dialed in):
 #       sts:* for assuming roles
 #       ec2:* for EC2 instance and NACL reading, eventually NACL writing
@@ -141,7 +143,7 @@ def dynamodb_update(client_ddb, instanceId, accountId, vpcId, subnetId, naclId, 
 
     # Establish dynamodb resource
     dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-    dynamo_table = dynamodb.Table(os.environ['DYNAMO_TABLE'])
+    dynamo_table = dynamodb.Table(os.environ['DDB_BLOCK_LIST'])
 
     # TTL Stuff
     day_threshold = int(os.environ['DAY_THRESHOLD'])
