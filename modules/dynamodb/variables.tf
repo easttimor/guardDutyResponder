@@ -4,13 +4,19 @@ variable "ddb_table_name" {
   default     = ""
 }
 
-variable "ddb_sort_key" {
+variable "ddb_range_key" {
   description = ""
   type        = string
   default     = ""
 }
 
 variable "ddb_partition_key" {
+  description = ""
+  type        = string
+  default     = ""
+}
+
+variable "ddb_attribute" {
   description = ""
   type        = string
   default     = ""

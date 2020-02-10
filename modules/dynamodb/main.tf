@@ -4,7 +4,7 @@ resource "aws_dynamodb_table" "this" {
   read_capacity  = var.ddb_read_capacity
   write_capacity = var.ddb_write_capacity
   hash_key       = var.ddb_partition_key
-  range_key      = var.ddb_sort_key
+  range_key      = var.ddb_range_key
 
   attribute {
     name = var.ddb_partition_key
@@ -12,7 +12,7 @@ resource "aws_dynamodb_table" "this" {
   }
 
   attribute {
-    name = var.ddb_sort_key
+    name = var.ddb_range_key
     type = "S"
   }
 

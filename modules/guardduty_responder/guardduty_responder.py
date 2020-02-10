@@ -180,7 +180,7 @@ def ddb_blocklist_update(client_ddb, instanceId, accountId, vpcId, subnetId, nac
                                         'TTL': new_ttl})
 
             # Check DDB for NACL rule number
-            ddb_nacl_rule_key = {'naclId': naclId}
+            ddb_nacl_rule_key = {'naclId': naclId,'accountId': accountId}
             response = ddb_nacl_rule.get_item(Key=ddb_nacl_rule_key)
             if response and 'Item' in response:
                 # NACL entry exists in DynamoDB
@@ -204,6 +204,7 @@ def ddb_blocklist_update(client_ddb, instanceId, accountId, vpcId, subnetId, nac
                 ruleNum = int(os.environ['NACL_RULE_NUM'])
                 log.info('Registering new NACL %s with rule number %s',naclId,ruleNum)
                 ddb_nacl_rule.put_item(Item={'naclId': naclId,
+                                            'accountId': accountId,
                                             'ruleNum': ruleNum})
                 # Write new rule to NACL
                 nacl_create_entry(naclId,ruleNum,remoteIp,client_ec2,resource_ec2)
