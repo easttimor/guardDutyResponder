@@ -16,9 +16,9 @@ locals {
 
   create_guardduty_responder = true
   tags = {
-    project       = "Circus"
+    project       = "GuardDutyResponder"
     resourceOwner = ""
-    environment   = "Demo"
+    environment   = "SecOpsDemo"
   }
   environment_variables = {
     LOG_LEVEL          = "info"
