@@ -11,12 +11,30 @@ data "aws_iam_policy_document" "guardduty_responder" {
 
   statement {
     actions = [
-      "EC2:*",
-      "dynamodb:*",
-      "sts:*"
+      "EC2:DescribeNetworkAcls",
+      "EC2:CreateNetworkAclEntry"
     ]
     resources = [
       "*"
+    ]
+  }
+  statement {
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:PutItem"
+
+    ]
+    resources = [
+      "*"
+    ]
+  }
+  statement {
+    actions = [
+      "sts:AssumeRole"
+    ]
+    resources = [
+      "arn:aws:iam::*:role/*"
     ]
   }
 }
